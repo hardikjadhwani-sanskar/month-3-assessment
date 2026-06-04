@@ -49,15 +49,15 @@ class VendorOnboarding(Document):
 		if existing_onboarding:
 			frappe.throw("An approved onboarding already exists with this GST number.")
 		
-		# Check for active Supplier with the same GST number
-		# existing_supplier = frappe.get_all("Supplier", filters={"gst_number": self.gst_number, "status": "Active"})
-		# if existing_supplier:
-		# 	frappe.throw("An active Supplier already exists with this GST number.")
+		# Check for active Supplier with the same GST number - there is no GST number and status field in Supplier doctype, 
+		#.
+		existing_supplier = frappe.get_all("Supplier", filters={"supplier_name": self.supplier_name})
+		if existing_supplier:
+			frappe.throw("An active Supplier already exists with this GST number.")
 
-	#• on_submit: Set onboarding_status to Under Review.
-	# def on_submit(self):
-	# 	self.onboarding_status = "Under Review"
-	# 	self.save()
+	#• on_submit: Set onboarding_status to Under Review - this is handled in workflow.
+	def on_submit(self):
+		pass
 
 
 #• Create a whitelisted method 

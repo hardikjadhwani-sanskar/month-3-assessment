@@ -274,3 +274,7 @@ fixtures = [
 
 ]
 
+override_doctype_class = {
+    "Purchase Order": "vendor_portal.overrides.purchase_order.CustomPurchaseOrder"
+}
+
