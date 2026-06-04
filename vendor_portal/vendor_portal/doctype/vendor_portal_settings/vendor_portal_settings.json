@@ -1,0 +1,107 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-06-02 20:13:19.828132",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "auto_create_supplier",
+  "default_supplier_group",
+  "require_gst_verification",
+  "min_documents_required",
+  "rating_weight_delivery",
+  "rating_weight_quality",
+  "rating_weight_pricing",
+  "rating_weight_communication",
+  "auto_rating_enabled",
+  "low_rating_threshold"
+ ],
+ "fields": [
+    {
+      "fieldname": "auto_create_supplier",
+      "fieldtype": "Check",
+      "label": "Auto Create Supplier",
+      "default": "1"
+    },
+    {
+      "fieldname": "default_supplier_group",
+      "fieldtype": "Link",
+      "label": "Default Supplier Group",
+      "options": "Supplier Group"
+    },
+    {
+      "fieldname": "require_gst_verification",
+      "fieldtype": "Check",
+      "label": "Require GST Verification",
+      "default": "1"
+    },
+    {
+      "fieldname": "min_documents_required",
+      "fieldtype": "Int",
+      "label": "Minimum Documents Required",
+      "default": "2"
+    },
+    {
+      "fieldname": "rating_weight_delivery",
+      "fieldtype": "Float",
+      "label": "Rating Weight Delivery",
+      "default": "0.3"
+    },
+    {
+      "fieldname": "rating_weight_quality",
+      "fieldtype": "Float",
+      "label": "Rating Weight Quality",
+      "default": "0.3"
+    },
+    {
+      "fieldname": "rating_weight_pricing",
+      "fieldtype": "Float",
+      "label": "Rating Weight Pricing",
+      "default": "0.2"
+    },
+    {
+      "fieldname": "rating_weight_communication",
+      "fieldtype": "Float",
+      "label": "Rating Weight Communication",
+      "default": "0.2"
+    },
+    {
+      "fieldname": "auto_rating_enabled",
+      "fieldtype": "Check",
+      "label": "Auto Rating Enabled",
+      "default": "1"
+    },
+    {
+      "fieldname": "low_rating_threshold",
+      "fieldtype": "Float",
+      "label": "Low Rating Threshold",
+      "default": "2.5"
+    }
+  ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-06-02 20:13:19.828132",
+ "modified_by": "Administrator",
+ "module": "Vendor Portal",
+ "name": "Vendor Portal Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -1,0 +1,99 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-06-02 20:12:36.848917",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+"autoname": "format:VRL-{YYYY}-{#####}",
+ "field_order": [
+  "supplier",
+  "purchase_order",
+  "purchase_receipt",
+  "rating_type",
+  "score",
+  "remarks",
+  "rated_by",
+  "rating_date"
+ ],
+   "fields": [
+    {
+      "fieldname": "supplier",
+      "fieldtype": "Link",
+      "label": "Supplier",
+      "options": "Supplier",
+      "reqd": 1
+    },
+    {
+      "fieldname": "purchase_order",
+      "fieldtype": "Link",
+      "label": "Purchase Order",
+      "options": "Purchase Order"
+    },
+    {
+      "fieldname": "purchase_receipt",
+      "fieldtype": "Link",
+      "label": "Purchase Receipt",
+      "options": "Purchase Receipt"
+    },
+    {
+      "fieldname": "rating_type",
+      "fieldtype": "Select",
+      "label": "Rating Type",
+      "reqd": 1,
+      "options": "Delivery\nQuality\nPricing\nCommunication"
+    },
+    {
+      "fieldname": "score",
+      "fieldtype": "Float",
+      "label": "Score",
+      "reqd": 1
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "Small Text",
+      "label": "Remarks"
+    },
+    {
+      "fieldname": "rated_by",
+      "fieldtype": "Link",
+      "label": "Rated By",
+      "options": "User",
+      "read_only": 1,
+      "default": "__user"
+    },
+    {
+      "fieldname": "rating_date",
+      "fieldtype": "Date",
+      "label": "Rating Date",
+      "read_only": 1,
+      "default": "Today"
+    }
+  ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-06-02 20:12:36.848917",
+ "modified_by": "Administrator",
+ "module": "Vendor Portal",
+ "name": "Vendor Rating Log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
