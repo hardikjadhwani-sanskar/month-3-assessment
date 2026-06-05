@@ -278,3 +278,10 @@ override_doctype_class = {
     "Purchase Order": "vendor_portal.overrides.purchase_order.CustomPurchaseOrder"
 }
 
+doc_events = {
+    "Purchase Receipt": {
+        "validate": "vendor_portal.overrides.purchase_receipt.validate",
+        "on_submit": "vendor_portal.overrides.purchase_receipt.on_submit"
+    }
+}
+

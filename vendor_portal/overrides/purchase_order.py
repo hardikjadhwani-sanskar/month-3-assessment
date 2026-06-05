@@ -6,6 +6,7 @@
 # Add a custom log entry: frappe.logger().info("PO {name} validated for supplier {supplier}").
 
 
+
 import frappe
 from erpnext.buying.doctype.purchase_order.purchase_order import PurchaseOrder
 
@@ -36,7 +37,7 @@ class CustomPurchaseOrder(PurchaseOrder):
     # • on_submit (call super().on_submit() first): Auto-create a Vendor Rating Log entry with 
     # rating_type = Pricing, score calculated as: if grand_total is within 10% of the avg PO value for 
     # this supplier → score 4, if cheaper → score 5, if more expensive → score 3. This demonstrates auto-rating on submission.
-    # • on_cancel (call super().on_cancel() first): Delete any Vendor Rating Log entries linked to this PO.
+    
 
 
     def on_submit(self):
@@ -44,7 +45,18 @@ class CustomPurchaseOrder(PurchaseOrder):
 
         # Calculate rating score based on grand_total and average PO value for this supplier
         supplier_name = self.supplier
-        avg_po_value = frappe.db.get_value("Purchase Order", {"supplier": supplier_name, "docstatus": 1}, "avg(grand_total)")
+        result = frappe.get_all(
+                "Purchase Order",
+                filters={
+                    "supplier": supplier_name,
+                    "docstatus": 1
+                },
+                fields=[
+                    {"AVG": "grand_total", "as": "avg_po_value"}
+                ]
+        )
+
+        avg_po_value = result[0].avg_po_value if result else 0
         
         if avg_po_value:
             if abs(self.grand_total - avg_po_value) <= 0.1 * avg_po_value: # if within 10%
@@ -64,6 +76,7 @@ class CustomPurchaseOrder(PurchaseOrder):
             })
             rating_log.insert() # Insert the log entry into the database
 
+    # • on_cancel (call super().on_cancel() first): Delete any Vendor Rating Log entries linked to this PO.
     def on_cancel(self):
         super().on_cancel()  # Call the original on_cancel method first
 
