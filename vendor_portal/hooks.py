@@ -285,3 +285,8 @@ doc_events = {
     }
 }
 
+app_include_js = [
+    "/assets/vendor_portal/js/purchase_order.js",
+    "/assets/vendor_portal/js/purchase_order_list.js",
+    "/assets/vendor_portal/js/supplier.js"
+]
