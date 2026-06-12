@@ -8,7 +8,7 @@ All wrapped in try-except with frappe.log_error for production safety.
 import frappe
 from frappe.utils import today, flt
 
-
+#/api/method/vendor_portal.api.get_vendor_dashboard?supplier=SUPPLIER_NAME
 @frappe.whitelist()
 def get_vendor_dashboard(supplier):
     """
@@ -86,7 +86,7 @@ def get_vendor_dashboard(supplier):
         frappe.log_error(frappe.get_traceback(), "get_vendor_dashboard Error")
         frappe.throw(frappe._("Error fetching vendor dashboard data."))
 
-
+#/api/method/vendor_portal.api.submit_vendor_rating
 @frappe.whitelist()
 def submit_vendor_rating(supplier, rating_type, score, remarks,
                          purchase_order=None, purchase_receipt=None):
@@ -123,7 +123,7 @@ def submit_vendor_rating(supplier, rating_type, score, remarks,
         frappe.log_error(frappe.get_traceback(), "submit_vendor_rating Error")
         frappe.throw(frappe._("Error submitting vendor rating."))
 
-
+#/api/method/vendor_portal.api.get_vendor_rating_history?supplier=SUPPLIER_NAME
 @frappe.whitelist()
 def get_vendor_rating_history(supplier):
     """Fetch all Vendor Rating Log entries for a supplier, newest first."""
@@ -139,7 +139,7 @@ def get_vendor_rating_history(supplier):
         frappe.log_error(frappe.get_traceback(), "get_vendor_rating_history Error")
         frappe.throw(frappe._("Error fetching rating history."))
 
-
+#/api/method/vendor_portal.api.create_vendor_rating_log
 @frappe.whitelist()
 def create_vendor_rating_log(supplier, rating_type, score, remarks,
                               purchase_order=None, purchase_receipt=None):
@@ -148,7 +148,7 @@ def create_vendor_rating_log(supplier, rating_type, score, remarks,
         supplier, rating_type, score, remarks, purchase_order, purchase_receipt
     )
 
-
+#/api/method/vendor_portal.api.get_supplier_comparison?item_code=ITEM_CODE
 @frappe.whitelist()
 def get_supplier_comparison(item_code, qty=1):
     """
@@ -159,7 +159,7 @@ def get_supplier_comparison(item_code, qty=1):
         qty = flt(qty)
         data = frappe.db.sql("""
             SELECT
-                poi.supplier                                AS supplier,
+                po.supplier                                 AS supplier,
                 s.supplier_name                             AS supplier_name,
                 s.custom_vendor_rating                      AS vendor_rating,
                 s.custom_vendor_category                    AS vendor_category,
@@ -167,17 +167,23 @@ def get_supplier_comparison(item_code, qty=1):
                 MAX(poi.rate)                               AS last_rate,
                 AVG(poi.rate)                               AS avg_rate,
                 SUM(poi.qty)                                AS total_supplied_qty,
-                AVG(CASE WHEN vrl.rating_type = 'Delivery'
-                         THEN vrl.score END)                AS delivery_score
+                vrl_agg.avg_delivery_score                  AS delivery_score
             FROM `tabPurchase Order Item` poi
             JOIN `tabPurchase Order` po
-                ON po.name = poi.parent AND po.docstatus = 1
+                ON po.name = poi.parent
+                AND po.docstatus = 1
             JOIN `tabSupplier` s
                 ON s.name = po.supplier
-            LEFT JOIN `tabVendor Rating Log` vrl
-                ON vrl.supplier = po.supplier
+            LEFT JOIN (
+                SELECT supplier, AVG(score) AS avg_delivery_score
+                FROM `tabVendor Rating Log`
+                WHERE rating_type = 'Delivery'
+                GROUP BY supplier
+            ) vrl_agg
+                ON vrl_agg.supplier = po.supplier
             WHERE poi.item_code = %s
-            GROUP BY poi.supplier
+            GROUP BY po.supplier, s.supplier_name, s.custom_vendor_rating,
+                    s.custom_vendor_category, s.custom_total_rating_count
             ORDER BY s.custom_vendor_rating DESC
         """, item_code, as_dict=True)
 
@@ -186,7 +192,7 @@ def get_supplier_comparison(item_code, qty=1):
         frappe.log_error(frappe.get_traceback(), "get_supplier_comparison Error")
         frappe.throw(frappe._("Error fetching supplier comparison."))
 
-
+#/api/method/vendor_portal.api.get_onboarding_status_summary
 @frappe.whitelist()
 def get_onboarding_status_summary():
     """Returns summary counts for the Vendor Onboarding dashboard widget."""

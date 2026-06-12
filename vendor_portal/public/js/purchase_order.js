@@ -77,7 +77,7 @@ function update_supplier_banner(frm) {
         const rating   = d.custom_vendor_rating || 0;
         const count    = d.custom_total_rating_count || 0;
         const category = d.custom_vendor_category || "N/A";
-        const stars    = _render_stars(rating);
+        // const stars    = _render_stars(rating);
         const color    = rating >= 4 ? "#1DB954" : rating >= 3 ? "#FF9500" : "#E74C3C";
  
         frm.dashboard.set_headline_alert(
@@ -91,7 +91,7 @@ function update_supplier_banner(frm) {
                     <span style="font-size:11px;opacity:.6;text-transform:uppercase;
                                  letter-spacing:.05em;">Rating</span>&nbsp;
                     <span style="color:${color};font-weight:700;font-size:15px;">
-                        ${stars} ${flt(rating, 1)}
+                        ${flt(rating, 1)}
                     </span>
                     <span style="font-size:11px;opacity:.6;">
                         (${count} review${count !== 1 ? "s" : ""})
@@ -175,7 +175,7 @@ function show_rating_history_dialog(supplier) {
                     <table style="width:100%;border-collapse:collapse;">
                         <thead>
                             <tr style="border-bottom:2px solid var(--border-color);">
-                                ${["Date","Type","Score","Remarks","Rated By"].map(h =>
+                                ${["Date","Type","Score","Remarks"].map(h =>
                                     `<th style="padding:10px 12px;text-align:left;font-size:11px;
                                                 text-transform:uppercase;letter-spacing:.05em;
                                                 color:var(--text-muted);">${h}</th>`
