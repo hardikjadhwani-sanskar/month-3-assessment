@@ -1,0 +1,336 @@
+# vendor_portal/tasks.py
+"""
+Scheduled background jobs for Vendor Portal.
+Registered in hooks.py under scheduler_events.
+"""
+
+
+
+import frappe
+from frappe.utils import today, add_days, now_datetime, flt
+
+
+# Auto-Calculate Vendor Ratings (Daily):
+# For each active Supplier with vendor_category set: Fetch all Vendor Rating Logs. 
+# Calculate weighted average using weights from Vendor Portal Settings. 
+# Update vendor_rating and total_rating_count on the Supplier record. 
+# If rating drops below low_rating_threshold, send email alert to Vendor Managers. 
+# Register: scheduler_events > daily.
+
+def auto_calculate_vendor_ratings():
+    """
+    Daily job: Recalculate vendor_rating for all active suppliers with vendor_category.
+    Sends alert if rating drops below low_rating_threshold.
+    """
+    settings = frappe.get_single("Vendor Portal Settings")
+    if not settings.auto_rating_enabled:
+        return
+
+    suppliers = frappe.get_all(
+        "Supplier",
+        filters={"disabled": 0, "custom_vendor_category": ["!=", ""]},
+        pluck="name"
+    )
+
+    weights = {
+        "Delivery":      flt(settings.rating_weight_delivery),
+        "Quality":       flt(settings.rating_weight_quality),
+        "Pricing":       flt(settings.rating_weight_pricing),
+        "Communication": flt(settings.rating_weight_communication),
+    }
+
+    low_threshold = flt(settings.low_rating_threshold)
+
+    for supplier in suppliers:
+        try:
+            breakdown = frappe.db.sql("""
+                SELECT rating_type, AVG(score) AS avg_score
+                FROM `tabVendor Rating Log`
+                WHERE supplier = %s
+                GROUP BY rating_type
+            """, supplier, as_dict=True)
+
+            if not breakdown:
+                continue
+
+            total_weight = 0
+            weighted_sum = 0
+            for row in breakdown:
+                w = weights.get(row.rating_type, 0)
+                weighted_sum += row.avg_score * w
+                total_weight += w
+
+            avg = round(weighted_sum / total_weight, 2) if total_weight else 0
+            total_count = frappe.db.count("Vendor Rating Log", {"supplier": supplier})
+
+            frappe.db.set_value("Supplier", supplier, {
+                "custom_vendor_rating":       avg,
+                "custom_total_rating_count":  total_count,
+            })
+
+            # Alert if below threshold
+            if avg and low_threshold and avg < low_threshold:
+                _send_low_rating_alert(supplier, avg, low_threshold)
+
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"auto_calculate_vendor_ratings failed for {supplier}"
+            )
+
+    frappe.db.commit()
+    frappe.logger().info(
+        f"auto_calculate_vendor_ratings complete. Processed {len(suppliers)} suppliers."
+    )
+
+
+# Auto-Rate Deliveries (Hourly):
+# Find Purchase Receipts submitted in the last 2 hours that don’t have a corresponding 
+# Vendor Rating Log with rating_type = Delivery. Auto-create rating entries based on delivery timeliness 
+# and quantity accuracy (same logic as Task 1.5). Register: scheduler_events > hourly.
+
+
+def auto_rate_deliveries():
+    """
+    Hourly job: Find Purchase Receipts submitted in the last 2 hours
+    without a Delivery rating. Auto-create rating based on timeliness + qty.
+    """
+    from vendor_portal.overrides.purchase_receipt import (
+        _is_late, _check_short_delivery
+    )
+
+    settings = frappe.get_single("Vendor Portal Settings")
+    if not settings.auto_rating_enabled:
+        return
+
+    two_hours_ago = frappe.utils.add_to_date(now_datetime(), hours=-2)
+
+    # Find PRs submitted in last 2 hours without a Delivery rating
+    prs = frappe.db.sql("""
+        SELECT pr.name
+        FROM `tabPurchase Receipt` pr
+        WHERE pr.docstatus = 1
+          AND pr.modified >= %s
+          AND NOT EXISTS (
+              SELECT 1 FROM `tabVendor Rating Log` vrl
+              WHERE vrl.purchase_receipt = pr.name
+                AND vrl.rating_type = 'Delivery'
+          )
+    """, str(two_hours_ago), as_dict=True)
+
+    for row in prs:
+        try:
+            doc = frappe.get_doc("Purchase Receipt", row.name)
+            is_late = _is_late(doc)
+            is_short = _check_short_delivery(doc)
+
+            if not is_late and not is_short:
+                score = 5
+            elif not is_late and is_short:
+                score = 4
+            elif is_late and not is_short:
+                score = 3
+            else:
+                score = 2
+
+            frappe.get_doc({
+                "doctype":          "Vendor Rating Log",
+                "supplier":         doc.supplier,
+                "purchase_receipt": doc.name,
+                "rating_type":      "Delivery",
+                "score":            score,
+                "remarks":          "Auto-generated by hourly background job.",
+                "rating_date":      today(),
+                "rated_by":         "Administrator",
+            }).insert(ignore_permissions=True, ignore_links=True)
+
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"auto_rate_deliveries failed for PR {row.name}"
+            )
+
+    frappe.db.commit()
+
+
+
+# Vendor Performance Digest (Weekly):
+# Send an HTML email to all Vendor Managers with: Top 5 vendors by rating, Bottom 5 vendors by rating, 
+# Total POs this week, New vendor onboardings, Vendors with rating below threshold. 
+# Register: scheduler_events > weekly.
+
+def vendor_performance_digest():
+    """
+    Weekly job: Send HTML email digest to all Vendor Managers.
+    Includes top/bottom 5 suppliers, weekly PO stats, new onboardings.
+    """
+    vendor_managers = frappe.get_all(
+        "Has Role",
+        filters={"role": "Vendor Manager"},
+        fields=["parent"],
+        distinct=True
+    )
+    recipients = [r.parent for r in vendor_managers if "@" in (r.parent or "")]
+
+    if not recipients:
+        return
+
+    # Top 5 suppliers by rating
+    top_suppliers = frappe.db.sql("""
+        SELECT supplier_name, custom_vendor_rating AS rating
+        FROM `tabSupplier`
+        WHERE custom_vendor_rating IS NOT NULL AND disabled = 0
+        ORDER BY custom_vendor_rating DESC
+        LIMIT 5
+    """, as_dict=True)
+
+    # Bottom 5
+    bottom_suppliers = frappe.db.sql("""
+        SELECT supplier_name, custom_vendor_rating AS rating
+        FROM `tabSupplier`
+        WHERE custom_vendor_rating IS NOT NULL AND disabled = 0
+          AND custom_total_rating_count > 0
+        ORDER BY custom_vendor_rating ASC
+        LIMIT 5
+    """, as_dict=True)
+
+    week_ago = add_days(today(), -7)
+
+    # Weekly PO count
+    weekly_pos = frappe.db.count("Purchase Order", {
+        "docstatus": 1,
+        "transaction_date": [">=", week_ago]
+    })
+
+    # New onboardings this week
+    new_onboardings = frappe.db.count("Vendor Onboarding", {
+        "creation": [">=", week_ago]
+    })
+
+    # Build HTML
+    def _supplier_rows(suppliers):
+        return "".join(
+            f"<tr><td>{s.supplier_name}</td>"
+            f"<td style='text-align:center'>{flt(s.rating, 1)}/5</td></tr>"
+            for s in suppliers
+        )
+
+    html = f"""
+    <h2>Weekly Vendor Performance Digest</h2>
+    <p>Week ending: {today()}</p>
+
+    <h3>Top 5 Suppliers by Rating</h3>
+    <table border="1" cellpadding="6" cellspacing="0">
+        <tr><th>Supplier</th><th>Rating</th></tr>
+        {_supplier_rows(top_suppliers)}
+    </table>
+
+    <h3>Bottom 5 Suppliers by Rating</h3>
+    <table border="1" cellpadding="6" cellspacing="0">
+        <tr><th>Supplier</th><th>Rating</th></tr>
+        {_supplier_rows(bottom_suppliers)}
+    </table>
+
+    <h3>Weekly Summary</h3>
+    <ul>
+        <li>Total POs this week: <strong>{weekly_pos}</strong></li>
+        <li>New Vendor Onboardings: <strong>{new_onboardings}</strong></li>
+    </ul>
+    """
+
+    frappe.sendmail(
+        recipients=recipients,
+        subject=f"Vendor Performance Digest — Week ending {today()}",
+        message=html,
+    )
+
+
+# Auto-Expire Stale Onboardings (Daily via cron):
+# Vendor Onboarding records stuck in "Under Review" for more than 7 days: 
+# Send reminder email to Vendor Managers. 
+# If > 14 days, auto-reject with reason "Auto-rejected: Review period expired." 
+#     Register: scheduler_events > cron > "0 9 * * *".
+
+
+def auto_expire_stale_onboardings():
+    """
+    Daily job (also via cron at 9am):
+    - Onboardings stuck in Under Review > 7 days: send reminder to Vendor Managers
+    - Onboardings stuck > 14 days: auto-reject
+    """
+    today_date = frappe.utils.getdate(today())
+    reminder_threshold = add_days(today(), -7)
+    reject_threshold   = add_days(today(), -14)
+
+    stale = frappe.get_all(
+        "Vendor Onboarding",
+        filters={
+            "onboarding_status": "Under Review",
+            "modified": ["<", reminder_threshold],
+        },
+        fields=["name", "supplier_name", "modified"]
+    )
+
+    vendor_managers = frappe.get_all(
+        "Has Role",
+        filters={"role": "Vendor Manager"},
+        pluck="parent",
+        distinct=True
+    )
+    managers = [u for u in vendor_managers if "@" in (u or "")] 
+
+    for rec in stale:
+        days_pending = (today_date - frappe.utils.getdate(rec.modified)).days
+        try:
+            if days_pending >= 14:
+                # Auto-reject
+                frappe.db.set_value("Vendor Onboarding", rec.name, {
+                    "onboarding_status": "Rejected",
+                    "rejection_reason":  "Auto-rejected: Review period expired (14 days).",
+                })
+                frappe.logger().info(f"Auto-rejected stale onboarding: {rec.name}")
+            elif days_pending >= 7 and managers:
+                # Send reminder
+                frappe.sendmail(
+                    recipients=managers,
+                    subject=f"Reminder: Vendor Onboarding Pending Review — {rec.supplier_name}",
+                    message=(
+                        f"<p>Vendor onboarding <strong>{rec.name}</strong> "
+                        f"({rec.supplier_name}) has been in 'Under Review' "
+                        f"for <strong>{days_pending} days</strong>.</p>"
+                        f"<p>Please review and take action.</p>"
+                    ),
+                )
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"auto_expire_stale_onboardings failed for {rec.name}"
+            )
+
+    frappe.db.commit()
+
+
+# ─── Internal ─────────────────────────────────────────────────────────────────
+
+def _send_low_rating_alert(supplier, rating, threshold):
+    """Send low rating alert email to all Vendor Managers."""
+    managers = frappe.get_all(
+        "Has Role",
+        filters={"role": "Vendor Manager"},
+        pluck="parent",
+        distinct=True
+    )
+    recipients = [u for u in managers if "@" in (u or "")]
+    if not recipients:
+        return
+
+    supplier_name = frappe.db.get_value("Supplier", supplier, "supplier_name")
+    frappe.sendmail(
+        recipients=recipients,
+        subject=f"Low Vendor Rating Alert: {supplier_name}",
+        message=(
+            f"<p>Supplier <strong>{supplier_name}</strong> has a rating of "
+            f"<strong>{rating}/5</strong>, below the threshold of {threshold}.</p>"
+            f"<p>Please review this vendor's performance.</p>"
+        ),
+    )

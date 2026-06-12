@@ -64,7 +64,28 @@ permission_query_conditions = {
     "Vendor Onboarding": "vendor_portal.permissions.get_onboarding_query_conditions",
 }
 
+
+scheduler_events = {
+    "daily": [
+        "vendor_portal.tasks.auto_calculate_vendor_ratings",
+        
+    ],
+    "hourly": [
+        "vendor_portal.tasks.auto_rate_deliveries",
+    ],
+    "weekly": [
+        "vendor_portal.tasks.vendor_performance_digest",
+    ],
+    "cron": {
+        "0 9 * * *": [
+            "vendor_portal.tasks.auto_expire_stale_onboardings",
+        ]
+    },
+}
+
+
 jinja = {
+
     "filters": [
         "vendor_portal.utils.jinja_filters.rating_to_stars",
     ]
