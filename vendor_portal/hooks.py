@@ -21,7 +21,16 @@ fixtures = [
     },
       {
         "dt": "Custom DocPerm"
-    }
+    },
+    {
+        "dt": "Role",
+        "filters": [
+            ["name", "in", [
+                "Vendor Manager",
+                "Purchase Team"
+            ]]
+        ]
+    },
    
 
 ]
