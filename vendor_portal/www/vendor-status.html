@@ -1,0 +1,85 @@
+
+{% extends "templates/web.html" %}
+{% block title %}Check Application Status{% endblock %}
+{% block page_content %}
+<div class="container" style="max-width:600px; margin:40px auto; padding:0 20px;">
+    <h1 style="text-align:center; font-size:28px; font-weight:700; margin-bottom:8px;">
+        Application Status
+    </h1>
+    <p style="text-align:center; color:#666; margin-bottom:32px;">
+        Enter your reference number or registered email to check status.
+    </p>
+
+    <div style="background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:28px;">
+        <div style="margin-bottom:16px;">
+            <label style="font-size:12px;font-weight:600;color:#555;">
+                Reference Number or Email
+            </label>
+            <input type="text" id="search-input" placeholder="VOB-2026-00001 or vendor@email.com"
+                   style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;
+                          font-size:14px;box-sizing:border-box;margin-top:6px;">
+        </div>
+        <button onclick="checkStatus()"
+                style="width:100%;background:#2490EF;color:#fff;border:none;
+                       padding:10px;border-radius:6px;font-size:14px;
+                       font-weight:600;cursor:pointer;">
+            Check Status
+        </button>
+    </div>
+
+    <div id="result" style="margin-top:24px;"></div>
+</div>
+
+<script>
+async function checkStatus() {
+    const query = document.getElementById("search-input").value.trim();
+    if (!query) return;
+
+    const res  = await fetch("/api/method/vendor_portal.www.vendor_status.get_status?query=" + encodeURIComponent(query));
+    const data = await res.json();
+    const r    = data.message;
+
+    const statusColors = {
+        Draft: "#888", "Under Review": "#2490EF",
+        Approved: "#1DB954", Rejected: "#E74C3C"
+    };
+
+    if (!r) {
+        document.getElementById("result").innerHTML =
+            `<div style="text-align:center;color:#E74C3C;padding:20px;">
+                No application found for the given reference or email.
+            </div>`;
+        return;
+    }
+
+    const color = statusColors[r.onboarding_status] || "#888";
+    document.getElementById("result").innerHTML = `
+        <div style="background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:24px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <div>
+                    <div style="font-size:11px;opacity:.6;text-transform:uppercase;letter-spacing:.05em;">
+                        Application Reference
+                    </div>
+                    <div style="font-size:18px;font-weight:700;">${r.name}</div>
+                </div>
+                <span style="background:${color}18;color:${color};border:1px solid ${color}40;
+                             padding:4px 14px;border-radius:20px;font-size:13px;font-weight:600;">
+                    ${r.onboarding_status}
+                </span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;">
+                <div><span style="opacity:.6">Vendor Name:</span> <strong>${r.supplier_name}</strong></div>
+                <div><span style="opacity:.6">Category:</span> <strong>${r.vendor_category || "—"}</strong></div>
+                <div><span style="opacity:.6">Submitted:</span> <strong>${r.creation ? r.creation.split(" ")[0] : "—"}</strong></div>
+                ${r.rejection_reason ? `<div style="grid-column:span 2;color:#E74C3C;">
+                    <span style="opacity:.6">Rejection Reason:</span> ${r.rejection_reason}
+                </div>` : ""}
+                ${r.linked_supplier ? `<div style="grid-column:span 2;color:#1DB954;">
+                    ✅ Supplier ID created: <strong>${r.linked_supplier}</strong>
+                </div>` : ""}
+            </div>
+        </div>`;
+}
+</script>
+{% endblock %}
+

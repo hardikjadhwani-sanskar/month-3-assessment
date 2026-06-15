@@ -20,7 +20,8 @@ class CustomPurchaseOrder(PurchaseOrder):
         # Check if supplier is blacklisted
         if supplier_doc.custom_is_blacklisted:
             reason = supplier_doc.custom_blacklist_reason or "No reason provided"
-            frappe.throw(f"Cannot create Purchase Order for blacklisted supplier {supplier_name}. Reason: {reason}")
+            frappe.throw(f"Cannot create Purchase Order for blacklisted supplier {supplier_name}. Reason: {reason}",
+                         frappe.ValidationError)
 
         # Check vendor rating against category threshold
         vendor_category = supplier_doc.custom_vendor_category
@@ -28,7 +29,8 @@ class CustomPurchaseOrder(PurchaseOrder):
             category_doc = frappe.get_doc("Vendor Category", vendor_category)
             minimum_rating_threshold = category_doc.minimum_rating_threshold
             if supplier_doc.custom_vendor_rating < minimum_rating_threshold:
-                frappe.throw(f"Supplier {supplier_name} rating ({supplier_doc.custom_vendor_rating}) is below the minimum threshold ({minimum_rating_threshold}) for {vendor_category}.")
+                frappe.throw(f"Supplier {supplier_name} rating ({supplier_doc.custom_vendor_rating}) is below the minimum threshold ({minimum_rating_threshold}) for {vendor_category}.",
+                             frappe.ValidationError)
 
         # Log validation info
         frappe.logger().info(f"PO {self.name} validated for supplier {supplier_name}.")

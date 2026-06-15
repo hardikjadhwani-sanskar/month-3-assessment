@@ -1,0 +1,174 @@
+
+{% extends "templates/web.html" %}
+
+{% block title %}Vendor Registration{% endblock %}
+
+{% block page_content %}
+<div class="container" style="max-width:720px; margin: 40px auto; padding: 0 20px;">
+
+    <div style="text-align:center; margin-bottom:32px;">
+        <h1 style="font-size:28px; font-weight:700;">Vendor Registration</h1>
+        <p style="color:#666;">Submit your application to become an approved vendor.</p>
+    </div>
+
+    <div id="success-msg" style="display:none; background:#d4edda; border:1px solid #c3e6cb;
+         border-radius:8px; padding:16px; margin-bottom:20px; color:#155724;">
+        ✅ Your application has been submitted successfully!
+        Reference: <strong id="ref-no"></strong>
+    </div>
+    <div id="error-msg" style="display:none; background:#f8d7da; border:1px solid #f5c6cb;
+         border-radius:8px; padding:16px; margin-bottom:20px; color:#721c24;"></div>
+
+    <form id="vendor-form" style="background:#fff; border:1px solid #e0e0e0;
+          border-radius:12px; padding:32px;">
+
+        <h3 style="margin:0 0 20px; font-size:16px; border-bottom:1px solid #eee; padding-bottom:10px;">
+            Basic Information
+        </h3>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+            <div>
+                <label>Supplier / Vendor Name *</label>
+                <input type="text" name="supplier_name" required class="vp-input">
+            </div>
+            <div>
+                <label>Company Name *</label>
+                <input type="text" name="company_name" required class="vp-input">
+            </div>
+            <div>
+                <label>Email *</label>
+                <input type="email" name="email" required class="vp-input">
+            </div>
+            <div>
+                <label>Phone *</label>
+                <input type="text" name="phone" required class="vp-input">
+            </div>
+            <div>
+                <label>GST Number</label>
+                <input type="text" name="gst_number" maxlength="15" class="vp-input"
+                       placeholder="22AAAAA0000A1Z5">
+            </div>
+            <div>
+                <label>PAN Number</label>
+                <input type="text" name="pan_number" maxlength="10" class="vp-input"
+                       placeholder="AAAAA0000A">
+            </div>
+            <div>
+                <label>Vendor Category *</label>
+                <select name="vendor_category" required class="vp-input">
+                    <option value="">— Select —</option>
+                </select>
+            </div>
+            <div>
+                <label>Contact Person</label>
+                <input type="text" name="contact_person" class="vp-input">
+            </div>
+        </div>
+
+        <h3 style="margin:24px 0 20px; font-size:16px; border-bottom:1px solid #eee; padding-bottom:10px;">
+            Address
+        </h3>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+            <div style="grid-column:span 2;">
+                <label>Address Line 1 *</label>
+                <input type="text" name="address_line_1" required class="vp-input">
+            </div>
+            <div>
+                <label>City *</label>
+                <input type="text" name="city" required class="vp-input">
+            </div>
+            <div>
+                <label>State *</label>
+                <input type="text" name="state" required class="vp-input">
+            </div>
+            <div>
+                <label>Pincode</label>
+                <input type="text" name="pincode" class="vp-input">
+            </div>
+        </div>
+
+        <h3 style="margin:24px 0 20px; font-size:16px; border-bottom:1px solid #eee; padding-bottom:10px;">
+            Bank Details
+        </h3>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+            <div>
+                <label>Bank Name</label>
+                <input type="text" name="bank_name" class="vp-input">
+            </div>
+            <div>
+                <label>Account Number</label>
+                <input type="text" name="bank_account_number" class="vp-input">
+            </div>
+            <div>
+                <label>IFSC Code</label>
+                <input type="text" name="ifsc_code" class="vp-input">
+            </div>
+        </div>
+
+        <div style="margin-top:28px; text-align:right;">
+            <button type="submit" id="submit-btn"
+                    style="background:#2490EF; color:#fff; border:none; padding:10px 28px;
+                           border-radius:6px; font-size:14px; font-weight:600; cursor:pointer;">
+                Submit Application
+            </button>
+        </div>
+    </form>
+
+    <p style="text-align:center; margin-top:16px; font-size:13px; color:#888;">
+        Already applied?
+        <a href="/vendor-status" style="color:#2490EF;">Check your application status</a>
+    </p>
+</div>
+
+<style>
+    .vp-input {
+        width: 100%; padding: 8px 10px; border: 1px solid #ddd;
+        border-radius: 6px; font-size: 13px; box-sizing: border-box;
+        margin-top: 4px; outline: none; transition: border-color 0.2s;
+    }
+    .vp-input:focus { border-color: #2490EF; }
+    label { font-size: 12px; font-weight: 600; color: #555; }
+</style>
+
+<script>
+    // Load vendor categories into select
+    fetch("/api/method/frappe.client.get_list?doctype=Vendor Category&fields=[%22name%22]&filters=[[%22is_active%22,%22=%22,1]]")
+        .then(r => r.json())
+        .then(data => {
+            const sel = document.querySelector('[name="vendor_category"]');
+            (data.message || []).forEach(c => {
+                sel.innerHTML += `<option value="${c.name}">${c.name}</option>`;
+            });
+        });
+
+    document.getElementById("vendor-form").addEventListener("submit", async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById("submit-btn");
+        btn.disabled = true;
+        btn.textContent = "Submitting…";
+
+        const data = Object.fromEntries(new FormData(this));
+
+        try {
+            const res = await fetch("/api/method/vendor_portal.www.vendor_register.submit_vendor_registration", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Frappe-CSRF-Token": frappe.csrf_token },
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+
+            if (result.message && result.message.name) {
+                document.getElementById("ref-no").textContent = result.message.name;
+                document.getElementById("success-msg").style.display = "block";
+                document.getElementById("vendor-form").style.display = "none";
+            } else {
+                throw new Error(result.exc || "Submission failed");
+            }
+        } catch (err) {
+            document.getElementById("error-msg").textContent = "Error: " + err.message;
+            document.getElementById("error-msg").style.display = "block";
+            btn.disabled = false;
+            btn.textContent = "Submit Application";
+        }
+    });
+</script>
+{% endblock %}
