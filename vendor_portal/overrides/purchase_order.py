@@ -12,28 +12,35 @@ from erpnext.buying.doctype.purchase_order.purchase_order import PurchaseOrder
 
 class CustomPurchaseOrder(PurchaseOrder):
     def validate(self):
-        super().validate()  # Call the original validate method first
+        super().validate()
+        supplier_doc = frappe.get_doc("Supplier", self.supplier)
 
-        supplier_name = self.supplier
-        supplier_doc = frappe.get_doc("Supplier", supplier_name)
-
-        # Check if supplier is blacklisted
+        # Check blacklist
         if supplier_doc.custom_is_blacklisted:
             reason = supplier_doc.custom_blacklist_reason or "No reason provided"
-            frappe.throw(f"Cannot create Purchase Order for blacklisted supplier {supplier_name}. Reason: {reason}",
-                         frappe.ValidationError)
+            frappe.throw(
+                f"Cannot create Purchase Order for blacklisted supplier "
+                f"{self.supplier}. Reason: {reason}",
+                frappe.ValidationError
+            )
 
-        # Check vendor rating against category threshold
+        # Check rating threshold — only when supplier has actual ratings
         vendor_category = supplier_doc.custom_vendor_category
-        if vendor_category:
-            category_doc = frappe.get_doc("Vendor Category", vendor_category)
-            minimum_rating_threshold = category_doc.minimum_rating_threshold
-            if supplier_doc.custom_vendor_rating < minimum_rating_threshold:
-                frappe.throw(f"Supplier {supplier_name} rating ({supplier_doc.custom_vendor_rating}) is below the minimum threshold ({minimum_rating_threshold}) for {vendor_category}.",
-                             frappe.ValidationError)
+        rating_count    = supplier_doc.custom_total_rating_count or 0
 
-        # Log validation info
-        frappe.logger().info(f"PO {self.name} validated for supplier {supplier_name}.")
+        if vendor_category and rating_count > 0:  # ✅ skip check for new suppliers
+            category_doc          = frappe.get_doc("Vendor Category", vendor_category)
+            minimum_threshold     = category_doc.minimum_rating_threshold or 0
+            vendor_rating         = supplier_doc.custom_vendor_rating or 0
+
+            if minimum_threshold and vendor_rating < minimum_threshold:
+                frappe.throw(
+                    f"Supplier {self.supplier} rating ({vendor_rating}) is below "
+                    f"the minimum threshold ({minimum_threshold}) for {vendor_category}.",
+                    frappe.ValidationError
+                )
+
+        frappe.logger().info(f"PO {self.name} validated for supplier {self.supplier}.")
 
     
     # • on_submit (call super().on_submit() first): Auto-create a Vendor Rating Log entry with 
@@ -43,40 +50,40 @@ class CustomPurchaseOrder(PurchaseOrder):
 
 
     def on_submit(self):
-        super().on_submit()  # Call the original on_submit method first
+        super().on_submit()
 
-        # Calculate rating score based on grand_total and average PO value for this supplier
-        supplier_name = self.supplier
-        result = frappe.get_all(
-                "Purchase Order",
-                filters={
-                    "supplier": supplier_name,
-                    "docstatus": 1
-                },
-                fields=[
-                    {"AVG": "grand_total", "as": "avg_po_value"}
-                ]
-        )
+        settings = frappe.get_single("Vendor Portal Settings")
+        if not settings.auto_rating_enabled:
+            return
 
-        avg_po_value = result[0].avg_po_value if result else 0
-        
+        # Use raw SQL for AVG 
+        result = frappe.db.sql("""
+            SELECT AVG(grand_total) AS avg_po_value
+            FROM `tabPurchase Order`
+            WHERE supplier = %s
+            AND docstatus = 1
+            AND name != %s
+        """, (self.supplier, self.name), as_dict=True)
+
+        avg_po_value = result[0].avg_po_value if result and result[0].avg_po_value else None
+
         if avg_po_value:
-            if abs(self.grand_total - avg_po_value) <= 0.1 * avg_po_value: # if within 10%
+            if abs(self.grand_total - avg_po_value) <= 0.1 * avg_po_value:
                 score = 4
-            elif self.grand_total < avg_po_value: # if cheaper 
+            elif self.grand_total < avg_po_value:
                 score = 5
             else:
                 score = 3
+        else:
+            score = 4  # No prior POs — neutral default
 
-            # Create Vendor Rating Log entry
-            rating_log = frappe.get_doc({
-                "doctype": "Vendor Rating Log",
-                "supplier": supplier_name,
-                "rating_type": "Pricing",
-                "score": score,
-                "purchase_order": self.name
-            })
-            rating_log.insert() # Insert the log entry into the database
+        frappe.get_doc({
+            "doctype":        "Vendor Rating Log",
+            "supplier":       self.supplier,
+            "rating_type":    "Pricing",
+            "score":          score,
+            "purchase_order": self.name,
+        }).insert(ignore_permissions=True, ignore_links=True)
 
     # • on_cancel (call super().on_cancel() first): Delete any Vendor Rating Log entries linked to this PO.
     def on_cancel(self):

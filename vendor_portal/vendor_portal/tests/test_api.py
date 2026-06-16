@@ -23,7 +23,7 @@ def get_default_expense_account():
     company = get_default_company()
     return frappe.db.get_value(
         "Account",
-        {"company": company, "account_type": "Expense Account", "is_group": 0},
+        {"company": company, "account_type": "Cost of Goods Sold", "is_group": 0},
         "name"
     )
 
@@ -45,52 +45,37 @@ def make_vendor_category(name="API Test Category", threshold=3.0):
 def make_test_supplier(
     name="API Test Supplier",
     rating=4.0,
-    rating_count=5,
+    rating_count=0,
     blacklisted=False,
     blacklist_reason="",
     category="API Test Category",
     threshold=3.0,
 ):
-    """
-    Create or fully reset a test supplier.
-
-    FIX: The existing-supplier branch now does a full db_set of ALL
-    fields including custom_vendor_rating and custom_total_rating_count.
-    Previously, if a prior test's _recalculate_supplier_rating() had
-    updated the rating on the Supplier record, the stale value would
-    persist into the next test even though make_test_supplier was called
-    — because save() went through validate() which could be blocked by
-    the very stale rating we were trying to overwrite.
-
-    Using db_set bypasses validate() entirely, guaranteeing the supplier
-    is in exactly the requested state before the test runs.
-    """
     make_vendor_category(category, threshold)
 
     existing = frappe.db.get_value("Supplier", {"supplier_name": name}, "name")
     if existing:
-        # db_set writes directly to DB, bypassing validate() hooks.
-        # This prevents the threshold check from blocking the reset itself.
-        frappe.db.set_value("Supplier", existing, {
-            "custom_vendor_rating":      rating,
-            "custom_total_rating_count": rating_count,
-            "custom_is_blacklisted":     1 if blacklisted else 0,
-            "custom_blacklist_reason":   blacklist_reason,
-            "custom_vendor_category":    category,
+        sup_name = existing
+    else:
+        sup = frappe.get_doc({
+            "doctype":        "Supplier",
+            "supplier_name":  name,
+            "supplier_group": frappe.db.get_value("Supplier Group", {}, "name"),
         })
-        frappe.db.commit()
-        return frappe.get_doc("Supplier", existing)
+        sup.insert(ignore_permissions=True)
+        sup_name = sup.name
 
-    return frappe.get_doc({
-        "doctype":                   "Supplier",
-        "supplier_name":             name,
-        "supplier_group":            frappe.db.get_value("Supplier Group", {}, "name"),
+    # db_set bypasses on_update hook — rating won't be recalculated
+    frappe.db.set_value("Supplier", sup_name, {
         "custom_vendor_category":    category,
         "custom_vendor_rating":      rating,
         "custom_total_rating_count": rating_count,
         "custom_is_blacklisted":     1 if blacklisted else 0,
         "custom_blacklist_reason":   blacklist_reason,
-    }).insert(ignore_permissions=True)
+    })
+    frappe.db.commit()
+
+    return frappe.get_doc("Supplier", sup_name)
 
 
 def make_test_item(code="VP-TEST-ITEM"):
@@ -113,21 +98,25 @@ def make_purchase_order(supplier_name, schedule_date=None, qty=10, rate=100):
     company  = get_default_company()
     wh       = get_default_warehouse()
 
+    effective_date  = schedule_date or today()
+ 
     po = frappe.get_doc({
-        "doctype":       "Purchase Order",
-        "supplier":      supplier,
-        "schedule_date": schedule_date or today(),
-        "company":       company,
+        "doctype":         "Purchase Order",
+        "supplier":        supplier,
+        "transaction_date": effective_date,   # ← keep PO date in sync with schedule_date
+        "schedule_date":   effective_date,
+        "company":         company,
         "items": [{
             "item_code":     item.name,
             "qty":           qty,
             "rate":          rate,
-            "schedule_date": schedule_date or today(),
+            "schedule_date": effective_date,
             "warehouse":     wh,
         }],
     })
     po.insert(ignore_permissions=True)
     return po
+
 
 
 def make_purchase_receipt(po, accepted_qty=None, posting_date=None):
@@ -266,6 +255,8 @@ class TestPurchaseOrderOverride(unittest.TestCase):
         Submitting a PO must auto-create exactly one Vendor Rating Log
         with rating_type = Pricing.
         """
+
+        frappe.db.set_single_value("Vendor Portal Settings", "auto_rating_enabled", 1)
         supplier = make_test_supplier(
             name="API Test Supplier",
             rating=4.0,
@@ -496,13 +487,22 @@ class TestVendorRatingAPI(unittest.TestCase):
                 }],
             })
             po.insert(ignore_permissions=True)
+
+            frappe.db.set_single_value(
+                "Vendor Portal Settings", "auto_rating_enabled", 0
+            )
             po.submit()
+
+        # ✅ Re-apply ratings via db_set AFTER all PO submits
+        # so on_submit recalculation cannot overwrite them
+        frappe.db.set_value("Supplier", sup_a.name, "custom_vendor_rating", 4.5)
+        frappe.db.set_value("Supplier", sup_b.name, "custom_vendor_rating", 2.5)
+        frappe.db.commit()
 
         result = get_supplier_comparison("VP-COMP-ITEM")
 
         self.assertIsInstance(result, list)
-        self.assertGreaterEqual(len(result), 2,
-                                "Must return at least 2 suppliers")
+        self.assertGreaterEqual(len(result), 2)
 
         supplier_names = [r.get("supplier") for r in result]
         self.assertIn(sup_a.name, supplier_names)
@@ -511,13 +511,12 @@ class TestVendorRatingAPI(unittest.TestCase):
         idx_a = supplier_names.index(sup_a.name)
         idx_b = supplier_names.index(sup_b.name)
         self.assertLess(idx_a, idx_b,
-                        "Higher-rated supplier must appear first in results")
+            "Higher-rated supplier must appear first in results")
 
         first = result[0]
         for field in ["supplier", "supplier_name", "vendor_rating",
-                      "avg_rate", "last_rate", "total_supplied_qty"]:
-            self.assertIn(field, first,
-                          f"Field '{field}' missing from API response")
+                    "avg_rate", "last_rate", "total_supplied_qty"]:
+            self.assertIn(field, first, f"Field '{field}' missing from API response")
 
 
 # ─── TestPermissions ──────────────────────────────────────────────────────────

@@ -1,4 +1,3 @@
-
 {% extends "templates/web.html" %}
 
 {% block title %}Vendor Registration{% endblock %}
@@ -86,6 +85,21 @@
             </div>
         </div>
 
+
+         <h3 style="margin:24px 0 20px; font-size:16px; border-bottom:1px solid #eee; padding-bottom:10px;">
+            Upload Documents
+        </h3>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+            <div>
+                <label>GST Certificate </label>
+                <input type="file" name="gst_certificate" class="vp-input">
+            </div>
+            <div>
+                <label>PAN Card </label>
+                <input type="file" name="pan_card" class="vp-input">
+            </div>
+        </div>
+
         <h3 style="margin:24px 0 20px; font-size:16px; border-bottom:1px solid #eee; padding-bottom:10px;">
             Bank Details
         </h3>
@@ -146,13 +160,33 @@
         btn.disabled = true;
         btn.textContent = "Submitting…";
 
-        const data = Object.fromEntries(new FormData(this));
+        // FIX: The form contains <input type="file"> fields (gst_certificate,
+        // pan_card). Previously this code did:
+        //     const data = Object.fromEntries(new FormData(this));
+        //     body: JSON.stringify(data)
+        // JSON.stringify() cannot serialize File objects — it silently
+        // converts them to "{}", so no file bytes were ever sent to the
+        // server even though the UI showed a successful submission.
+        //
+        // FormData must be sent directly as the request body so the
+        // browser encodes it as multipart/form-data, which is the only
+        // format that can carry binary file content alongside text fields.
+        const formData = new FormData(this);
 
         try {
             const res = await fetch("/api/method/vendor_portal.www.vendor_register.submit_vendor_registration", {
                 method: "POST",
-                headers: { "Content-Type": "application/json", "X-Frappe-CSRF-Token": frappe.csrf_token },
-                body: JSON.stringify(data)
+                headers: {
+                    // FIX: Content-Type must NOT be set manually here.
+                    // The browser automatically sets it to
+                    // "multipart/form-data; boundary=----WebKitFormBoundary..."
+                    // when the body is a FormData instance. Setting it
+                    // explicitly (or leaving the old "application/json")
+                    // breaks multipart parsing on the server and
+                    // frappe.request.files would come back empty.
+                    "X-Frappe-CSRF-Token": frappe.csrf_token
+                },
+                body: formData
             });
             const result = await res.json();
 

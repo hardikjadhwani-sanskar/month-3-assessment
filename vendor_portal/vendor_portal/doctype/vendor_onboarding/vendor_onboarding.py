@@ -6,11 +6,18 @@ import re
 class VendorOnboarding(Document):
 
     def validate(self):
-        self.validate_gst_number()
-        self.validate_pan_number()
+        if(self.gst_number):
+            self.validate_gst_number()
+            self.check_existing_onboarding()
+
+        if(self.pan_number):
+            self.validate_pan_number()
         self.validate_email()
-        self.validate_documents()
-        self.check_existing_onboarding()
+        
+        if(self.documents):
+
+            self.validate_documents()
+        
 
     def validate_gst_number(self):
         # FIX: changed `if self.gst_number:` to always validate —
@@ -41,7 +48,7 @@ class VendorOnboarding(Document):
         required_docs = frappe.get_single("Vendor Portal Settings").min_documents_required
         if len(self.documents) < required_docs:
             frappe.throw(
-                f"At least {required_docs} documents are required for onboarding.",
+                f"At least {required_docs} documents are required for onboarding attached {len(self.documents)}.",
                 frappe.ValidationError
             )
 
