@@ -30,16 +30,26 @@ def has_permission_onboarding(doc, ptype, user=None):
     """
     Vendor Onboarding permissions:
     - Vendor Manager: full access
-    - Purchase Team: can only see/edit their own submissions
+    - Purchase Team: can only see/edit their own submissions and also can create new submissions , submit for review
     """
+
     user = user or frappe.session.user
     roles = frappe.get_roles(user)
+
 
     if "Vendor Manager" in roles or "System Manager" in roles:
         return True
 
-    if ptype in ("write", "delete", "read"):
-        return doc.get("owner") == user
+    # Purchase Team permissions
+    if "Purchase Team" in roles:
+
+        # Can create new onboarding records
+        if ptype == "create":
+            return True
+
+        # Can access only own submissions
+        if ptype in ("read", "write", "delete", "submit"):
+            return doc.owner == user
 
     return False
 

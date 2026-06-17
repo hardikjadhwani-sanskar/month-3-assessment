@@ -12,7 +12,7 @@
   "impersonate": 0,
   "import": 0,
   "mask": 0,
-  "modified": "2026-06-12 11:52:38.717756",
+  "modified": "2026-06-17 16:17:09.013602",
   "name": "ta8jl1trug",
   "parent": "Vendor Onboarding",
   "permlevel": 0,
@@ -20,7 +20,7 @@
   "read": 1,
   "report": 1,
   "role": "Vendor Manager",
-  "select": 0,
+  "select": 1,
   "share": 0,
   "submit": 1,
   "write": 1

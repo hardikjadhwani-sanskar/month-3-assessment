@@ -6,6 +6,7 @@
 // • Show a progress indicator for documents: "2 of 3 documents verified" based on child table is_verified status.
 
 
+
 frappe.ui.form.on("Vendor Onboarding", {
 
     refresh(frm) {
