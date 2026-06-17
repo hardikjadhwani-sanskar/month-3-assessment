@@ -193,8 +193,7 @@ def cleanup_test_suppliers():
         frappe.delete_doc("Supplier", supplier_id,
                           ignore_permissions=True, force=True)
 
-    # FIX: commit here, not just in tearDown, so the next class's setUp
-    # sees a clean DB regardless of test execution order.
+ 
     frappe.db.commit()
 
 
@@ -493,8 +492,7 @@ class TestVendorRatingAPI(unittest.TestCase):
             )
             po.submit()
 
-        # ✅ Re-apply ratings via db_set AFTER all PO submits
-        # so on_submit recalculation cannot overwrite them
+
         frappe.db.set_value("Supplier", sup_a.name, "custom_vendor_rating", 4.5)
         frappe.db.set_value("Supplier", sup_b.name, "custom_vendor_rating", 2.5)
         frappe.db.commit()

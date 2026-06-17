@@ -177,11 +177,6 @@ class TestVendorOnboarding(unittest.TestCase):
         1. Return the new Supplier name
         2. Create a Supplier with supplier_name and custom_vendor_category
         3. Set linked_supplier and onboarding_status = Approved on the onboarding
-
-        Aligns to production code which:
-        - returns supplier.name  (was None in original)
-        - sets custom_vendor_category  (was vendor_category in original)
-        - sets reviewed_by via frappe.session.user
         """
         from vendor_portal.vendor_portal.doctype.vendor_onboarding.vendor_onboarding import (
             approve_onboarding,
@@ -256,8 +251,6 @@ class TestVendorOnboarding(unittest.TestCase):
         A second onboarding with the same GST where the first is Approved
         must be blocked on save by check_existing_onboarding().
 
-        Uses addCleanup() immediately after insert so doc1 is always
-        deleted even if an assertion fails mid-test.
         """
         gst = "27AAAAA0000A1Z5"
 

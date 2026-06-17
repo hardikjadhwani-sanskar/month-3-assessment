@@ -38,7 +38,7 @@
   "impersonate": 0,
   "import": 0,
   "mask": 0,
-  "modified": "2026-06-12 11:55:50.825980",
+  "modified": "2026-06-17 14:29:03.694095",
   "name": "uiccqlmis6",
   "parent": "Vendor Onboarding",
   "permlevel": 0,
@@ -46,10 +46,10 @@
   "read": 1,
   "report": 0,
   "role": "Purchase Team",
-  "select": 0,
+  "select": 1,
   "share": 0,
   "submit": 1,
-  "write": 0
+  "write": 1
  },
  {
   "amend": 0,

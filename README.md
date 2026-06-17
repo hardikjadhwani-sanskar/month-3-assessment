@@ -522,7 +522,7 @@ Purchase Order validation needs to intercept and **abort** ERPNext's own submit 
 
 ---
 
-### Pattern 2: `doc_events` — Purchase Receipt, Supplier, Vendor Onboarding
+### Pattern 2: `doc_events` — Purchase Receipt
 
 **File:** `vendor_portal/overrides/purchase_receipt.py`  
 **Registered in hooks.py:**
@@ -530,8 +530,6 @@ Purchase Order validation needs to intercept and **abort** ERPNext's own submit 
 doc_events = {
     "Purchase Receipt": {
         "validate":     "vendor_portal.overrides.purchase_receipt.validate",
-        "after_insert": "vendor_portal.overrides.purchase_receipt.insert_comment",
-        "on_update":    "vendor_portal.overrides.purchase_receipt.insert_comment",
         "on_submit":    "vendor_portal.overrides.purchase_receipt.on_submit",
     }
 }
@@ -547,21 +545,11 @@ Function signatures take `(doc, method)` instead of `self`. No `super()` needed 
 
 | Hook | Function | Purpose |
 |---|---|---|
-| `validate` | `validate(doc, method)` | Detect short delivery; set `doc.flags.has_short_delivery`; queue comment via `doc._pending_comment` |
-| `after_insert` | `insert_comment(doc, method)` | Write the short delivery comment to DB (doc now exists in DB) |
-| `on_update` | `insert_comment(doc, method)` | Same — covers re-saves |
+| `validate` | `validate(doc, method)` | Detect short delivery; set `doc.flags.has_short_delivery`;|
+
 | `on_submit` | `on_submit(doc, method)` | Auto-create Delivery rating log with score 2–5 |
 
-**Key design decisions in Purchase Receipt:**
 
-1. **Why not `add_comment()` in `validate`?**  
-   On a first save, the document has not been committed to the DB yet. `add_comment()` creates a `Comment` record with `reference_name = doc.name` — if that name doesn't exist in the DB, Frappe's link validation throws `Could not find Reference Name`. Solution: set `doc._pending_comment` in `validate`, then write the comment in `after_insert`/`on_update` when the doc is guaranteed to be in the DB.
-
-2. **Why raw SQL for comment insert instead of `frappe.get_doc().insert()`?**  
-   `frappe.get_doc({...}).insert()` runs Frappe's full link validation pipeline. Even in `after_insert`, there are edge cases (new doc within same transaction) where the reference check fails. Raw `INSERT INTO tabComment` bypasses this entirely while still writing to the same table.
-
-3. **Why `doc.flags` and `doc._pending_comment` instead of a DB field?**  
-   `flags` is an in-memory object that lives only for the current HTTP request. Since `validate`, `after_insert`, and `on_update` all run within the same request when a user saves a document, the flag set in `validate` is readable in `insert_comment` without any DB round-trip or schema changes.
 
 ---
 
@@ -575,7 +563,7 @@ Function signatures take `(doc, method)` instead of `self`. No `super()` needed 
 | Multiple apps can hook same event | ❌ Only one class wins | ✅ All hooks fire |
 | Complexity | Higher | Lower |
 | Best for | Changing or gating core doctype behaviour | Side effects, logging, notifications |
-| Used for | Purchase Order | Purchase Receipt, Supplier, Vendor Onboarding |
+| Used for In App | Purchase Order | Purchase Receipt |
 
 ---
 
@@ -588,7 +576,7 @@ Registered in `hooks.py` under `scheduler_events`. File: `vendor_portal/tasks.py
 | Auto Calculate Ratings | Daily | `auto_calculate_vendor_ratings` | Recalculates weighted avg rating for all suppliers with a vendor category. Sends low-rating alert if below threshold |
 | Auto Rate Deliveries | Hourly | `auto_rate_deliveries` | Finds PRs submitted in the last 2 hours with no Delivery rating. Creates rating automatically |
 | Vendor Performance Digest | Weekly | `vendor_performance_digest` | Emails HTML digest to all Vendor Manager users: top/bottom 5 suppliers, weekly PO stats, new onboardings |
-| Auto Expire Stale Onboardings | Daily + Cron 9am | `auto_expire_stale_onboardings` | Sends reminder to Vendor Managers for onboardings stuck in Under Review > 7 days. Auto-rejects after 14 days |
+| Auto Expire Stale Onboardings | Cron 9am | `auto_expire_stale_onboardings` | Sends reminder to Vendor Managers for onboardings stuck in Under Review > 7 days. Auto-rejects after 14 days |
 
 **To trigger a job manually:**
 ```bash
@@ -634,7 +622,7 @@ Hooks: `refresh`
 | Low rating warning | `frm.set_intro()` in orange if rating < `low_rating_threshold` |
 | View Onboarding button | `frappe.set_route` to linked Vendor Onboarding |
 
-### `public/js/vendor_onboarding.js`
+### `vendor_portal/doctype/vendor_onboarding/vendor_onboarding.js`
 
 Hooks: `refresh`, `vendor_category`, `gst_number`
 
@@ -754,12 +742,12 @@ bench --site vendor.localhost execute vendor_portal.patches.v1_0.recalculate_ven
 
 ### DocType Permissions
 
-| DocType | Vendor Manager | Purchase Team | Purchase User | Purchase Manager |
+| DocType | Vendor Manager | Purchase Team |
 |---|---|---|---|---|
-| Vendor Category | RWCDA | R | R | R |
-| Vendor Onboarding | RWCDSCA | RWCS | S | — |
-| Vendor Rating Log | RWCDA | RWC | — | — |
-| Vendor Portal Settings | RW | R | — | R |
+| Vendor Category | RWCDA | R |
+| Vendor Onboarding | RWCDSCA | RWCS |
+| Vendor Rating Log | RWCDA | RWC |
+| Vendor Portal Settings | RW | R |
 
 R=Read, W=Write, C=Create, D=Delete, S=Submit, A=Amend, CA=Cancel+Amend
 
@@ -770,6 +758,22 @@ Non-Vendor-Manager users can only write/delete their own rating entries (`rated_
 
 **`permission_query_conditions` (Vendor Onboarding):**  
 Vendor Managers see all onboarding records. Purchase Team users see only records they submitted (`owner == current_user`).
+
+
+### Fixtures
+
+The following permission-related configurations are exported as fixtures:
+
+Custom Roles (Vendor Manager, Purchase Team)
+Custom Role Permissions
+
+(Role permissions are not defined in doctype definition)
+
+Users Credentials - 
+
+1. Administrator  'President@2014'
+2. purchase_user@test.com  'sanskar'
+3. vendor_mgr@test.com 'sanskar'
 
 ---
 
@@ -783,14 +787,6 @@ Tests are in `vendor_portal/tests/test_vendor_portal.py`.
 bench --site vendor.localhost run-tests --app vendor_portal
 ```
 
-### Run a specific test class
-
-```bash
-bench --site vendor.localhost run-tests \
-  --app vendor_portal \
-  --module vendor_portal.tests.test_vendor_portal \
-  --test TestVendorOnboardingValidation
-```
 
 ### Test classes
 
@@ -808,10 +804,6 @@ Tests create real documents in the database (using the test site). Ensure:
 - At least one Warehouse is configured
 - `Vendor Portal Settings` is saved with default values
 
-Clean up after testing:
-```bash
-bench --site vendor.localhost run-tests --app vendor_portal --force
-```
 
 ---
 
@@ -827,9 +819,11 @@ bench --site vendor.localhost run-tests --app vendor_portal --force
 
 5. **Single company** — the app is designed for a single-company ERPNext setup. Multi-company scenarios (cross-company POs, inter-company transactions) are not tested.
 
-6. **ERPNext v16 field names** — `accepted_qty` in Purchase Receipt Item is stored as `qty` in ERPNext v16. If you upgrade to a version that renames this field, `purchase_receipt.py` will need updating.
+6. **Supplier GST field** — By default we don't have gst field in supplier i have used tax_id as a field for comparison with vendor gst_number field.
 
-7. **GST validation is India-specific** — the GST format regex (`^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$`) only validates Indian GST numbers. Set `require_gst_verification = 0` in settings for non-India deployments.
+7. **Assumed to not increment total rating field** - I have not included increment in custom_total_rating field in supplier when a Purchase order or Purchase receipt is created , but still a daily job runs and total ratings based on Vendor rating log is fetched and updated in supplier custom field.
+
+
 
 ---
 
@@ -841,14 +835,10 @@ bench --site vendor.localhost run-tests --app vendor_portal --force
 
 3. **Print format star display** — stars are rendered as Unicode characters (★ ½ ☆). PDF rendering quality depends on the font available in the PDF engine (wkhtmltopdf). In some environments, ½ may render as a replacement character.
 
-4. **Vendor Dashboard charts require Frappe Charts** — the `vendor-dashboard` page uses `frappe.Chart`. This library is bundled with Frappe but requires desk access — it is not available on public web pages.
 
-5. **`doc_events` comment deduplication** — the short delivery comment is deduplicated by exact content match. If the same item ships short twice with the same quantities, the second comment will not be added.
+4. **No two-factor approval** — the workflow has a single Purchase Manager approver. There is no dual-approval or committee-approval mechanism.
 
-6. **No two-factor approval** — the workflow has a single Purchase Manager approver. There is no dual-approval or committee-approval mechanism.
 
-7. **Patch `migrate_supplier_notes_to_rating_logs` is lossy** — keyword matching is approximate. Comments with no recognized keywords are silently skipped. The patch should be reviewed and customized before running on a production site.
-
-8. **Web portal CSRF** — the vendor registration page reads `frappe.csrf_token` from the global JS context. If Frappe changes how CSRF tokens are exposed on guest pages, the form submission will break.
-
+5. **Calculating Purchase Rating is not correct** — Currently when creating a purchase order the pricing rating is set according to previous po's average value , if the current po is lower than po then the rating is higher 
+but it should be set according to the item price , if the same item price is more or less in po's .
 ---

@@ -160,17 +160,7 @@
         btn.disabled = true;
         btn.textContent = "Submitting…";
 
-        // FIX: The form contains <input type="file"> fields (gst_certificate,
-        // pan_card). Previously this code did:
-        //     const data = Object.fromEntries(new FormData(this));
-        //     body: JSON.stringify(data)
-        // JSON.stringify() cannot serialize File objects — it silently
-        // converts them to "{}", so no file bytes were ever sent to the
-        // server even though the UI showed a successful submission.
-        //
-        // FormData must be sent directly as the request body so the
-        // browser encodes it as multipart/form-data, which is the only
-        // format that can carry binary file content alongside text fields.
+
         const formData = new FormData(this);
 
         try {
